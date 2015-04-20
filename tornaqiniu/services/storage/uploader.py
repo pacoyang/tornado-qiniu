@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 
 import os
+import tornado.gen
 
-from qiniu import config
-from qiniu.utils import urlsafe_base64_encode, crc32, file_crc32, _file_iter
-from qiniu import http
+from tornaqiniu import config
+from tornaqiniu.utils import urlsafe_base64_encode, crc32, file_crc32, _file_iter
+from tornaqiniu import http
 
-
+@tornado.gen.engine
 def put_data(
-        up_token, key, data, params=None, mime_type='application/octet-stream', check_crc=False, progress_handler=None):
+        up_token, key, data, params=None, mime_type='application/octet-stream', check_crc=False, progress_handler=None, callback=None):
     """上传二进制流到七牛
 
     Args:
@@ -25,10 +26,10 @@ def put_data(
         一个ReponseInfo对象
     """
     crc = crc32(data) if check_crc else None
-    return _form_put(up_token, key, data, params, mime_type, crc, False, progress_handler)
+    _form_put(up_token, key, data, params, mime_type, crc, False, progress_handler,callback=callback)
 
-
-def put_file(up_token, key, file_path, params=None, mime_type='application/octet-stream', check_crc=False, progress_handler=None):
+@tornado.gen.engine
+def put_file(up_token, key, file_path, params=None, mime_type='application/octet-stream', check_crc=False, progress_handler=None, callback=None):
     """上传文件到七牛
 
     Args:
@@ -54,8 +55,8 @@ def put_file(up_token, key, file_path, params=None, mime_type='application/octet
             ret, info = _form_put(up_token, key, input_stream, params, mime_type, crc, True, progress_handler)
     return ret, info
 
-
-def _form_put(up_token, key, data, params, mime_type, crc, is_file=False, progress_handler=None):
+@tornado.gen.engine
+def _form_put(up_token, key, data, params, mime_type, crc, is_file=False, progress_handler=None, callback=None):
     fields = {}
     if params:
         for k, v in params.items():
@@ -68,20 +69,20 @@ def _form_put(up_token, key, data, params, mime_type, crc, is_file=False, progre
     url = 'http://' + config.get_default('default_up_host') + '/'
     name = key if key else 'filename'
 
-    r, info = http._post_file(url, data=fields, files={'file': (name, data, mime_type)})
+    r, info = yield tornado.gen.Task(http._post_file,url, data=fields, files={'file': (name, data, mime_type)})
     if r is None and info.need_retry():
         if info.connect_failed:
             url = 'http://' + config.UPBACKUP_HOST + '/'
         if is_file:
             data.seek(0)
-        r, info = http._post_file(url, data=fields, files={'file': (name, data, mime_type)})
+        r, info = yield tornado.gen.Task(http._post_file,url, data=fields, files={'file': (name, data, mime_type)})
 
-    return r, info
+    callback( (r,info) )
 
-
-def put_stream(up_token, key, input_stream, data_size, params=None, mime_type=None, progress_handler=None):
+@tornado.gen.engine
+def put_stream(up_token, key, input_stream, data_size, params=None, mime_type=None, progress_handler=None, callback=None):
     task = _Resume(up_token, key, input_stream, data_size, params, mime_type, progress_handler)
-    return task.upload()
+    task.upload(callback)
 
 
 class _Resume(object):
@@ -111,32 +112,36 @@ class _Resume(object):
         self.mime_type = mime_type
         self.progress_handler = progress_handler
 
-    def upload(self):
+    @tornado.gen.engine
+    def upload(self, callback=None):
         """上传操作"""
         self.blockStatus = []
         host = config.get_default('default_up_host')
         for block in _file_iter(self.input_stream, config._BLOCK_SIZE):
             length = len(block)
             crc = crc32(block)
-            ret, info = self.make_block(block, length, host)
+            ret, info = yield tornado.gen.Task(self.make_block, block, length, host)
             if ret is None and not info.need_retry:
-                return ret, info
+                callback( (ret,info) )
+                return
             if info.connect_failed:
                 host = config.UPBACKUP_HOST
             if info.need_retry or crc != ret['crc32']:
-                ret, info = self.make_block(block, length, host)
+                ret, info = yield tornado.gen.Task(self.make_block, block, length, host)
                 if ret is None or crc != ret['crc32']:
-                    return ret, info
+                    callback( (ret,info) )
+                    return
 
             self.blockStatus.append(ret)
             if(callable(self.progress_handler)):
                 self.progress_handler(((len(self.blockStatus) - 1) * config._BLOCK_SIZE)+length, self.size)
-        return self.make_file(host)
+        self.make_file(host, callback=callback)
 
-    def make_block(self, block, block_size, host):
+    @tornado.gen.engine
+    def make_block(self, block, block_size, host, callback=None):
         """创建块"""
         url = self.block_url(host, block_size)
-        return self.post(url, block)
+        self.post(url, block, callback=callback)
 
     def block_url(self, host, size):
         return 'http://{0}/mkblk/{1}'.format(host, size)
@@ -157,11 +162,11 @@ class _Resume(object):
         url = '/'.join(url)
         return url
 
-    def make_file(self, host):
+    def make_file(self, host, callback=None):
         """创建文件"""
         url = self.file_url(host)
         body = ','.join([status['ctx'] for status in self.blockStatus])
-        return self.post(url, body)
+        self.post(url, body, callback=callback)
 
-    def post(self, url, data):
-        return http._post_with_token(url, data, self.up_token)
+    def post(self, url, data, callback=None):
+        http._post_with_token(url, data, self.up_token, callback=callback)

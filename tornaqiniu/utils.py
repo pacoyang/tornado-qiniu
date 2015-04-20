@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from hashlib import sha1
-from base64 import urlsafe_b64encode, urlsafe_b64decode
+from base64 import urlsafe_b64encode, urlsafe_b64decode,b64encode
 
 from .config import _BLOCK_SIZE
 
@@ -152,3 +152,31 @@ def entry(bucket, key):
         符合七牛API规格的数据格式
     """
     return urlsafe_base64_encode('{0}:{1}'.format(bucket, key))
+
+def to_native_string(string, encoding='ascii'):
+    """
+    Given a string object, regardless of type, returns a representation of that
+    string in the native string type, encoding and decoding where necessary.
+    This assumes ASCII unless told otherwise.
+    """
+    out = None
+
+    if isinstance(string, str):
+        out = string
+    else:
+        if is_py2:
+            out = string.encode(encoding)
+        else:
+            out = string.decode(encoding)
+
+    return out
+
+
+def basic_auth_str(username, password):
+    """Returns a Basic Auth string."""
+
+    authstr = 'Basic ' + to_native_string(
+        b64encode(('%s:%s' % (username, password)).encode('latin1')).strip()
+    )
+
+    return authstr

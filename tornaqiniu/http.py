@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 import platform
 
+import simplejson
 import requests
+import tornado.gen
 from requests.auth import AuthBase
 
-from qiniu import config
+from tornaqiniu import config
 from .auth import RequestsAuth
+from .tornadohttpclient import TornadoHTTPClient
 from . import __version__
 
 
@@ -14,46 +17,51 @@ _python_ver = platform.python_version()
 
 USER_AGENT = 'QiniuPython/{0} ({1}; ) Python/{2}'.format(__version__, _sys_info, _python_ver)
 
-_session = None
+_http = None
 _headers = {'User-Agent': USER_AGENT}
 
 
 def __return_wrapper(resp):
-    if resp.status_code != 200:
+    if resp.code != 200:
         return None, ResponseInfo(resp)
-    ret = resp.json() if resp.text != '' else {}
+    ret = simplejson.loads(resp.body) if resp.body != '' else {}
     return ret, ResponseInfo(resp)
 
 
 def _init():
-    session = requests.Session()
-    adapter = requests.adapters.HTTPAdapter(
-        pool_connections=config.get_default('connection_pool'), pool_maxsize=config.get_default('connection_pool'),
-        max_retries=config.get_default('connection_retries'))
-    session.mount('http://', adapter)
-    global _session
-    _session = session
+    global _http
+    _http = TornadoHTTPClient()
+    _http.set_proxy("http://10.0.1.32",31286)
 
 
-def _post(url, data, files, auth):
-    if _session is None:
+@tornado.gen.engine
+def _post(url, data, files, auth, callback=None):
+    if _http is None:
         _init()
     try:
-        r = _session.post(
-            url, data=data, files=files, auth=auth, headers=_headers, timeout=config.get_default('connection_timeout'))
-    except Exception as e:
-        return None, ResponseInfo(None, e)
-    return __return_wrapper(r)
+        r = yield tornado.gen.Task(_http.post,
+            url, params=data, files=files, auth=auth, headers=_headers, connect_timeout=config.get_default('connection_timeout'))
+    except Exception:
+        import traceback
+        callback( None, ResponseInfo(None, traceback.format_exc()) )
+        return
+    ret,info = __return_wrapper(r)
+    callback( ret,info )
 
-
-def _get(url, params, auth):
+@tornado.gen.engine
+def _get(url, params, auth,callback=None):
+    if _http is None:
+        _init()
     try:
-        r = requests.get(
+        r = yield tornado.gen.Task(_http.get,
             url, params=params, auth=RequestsAuth(auth) if auth is not None else None,
-            timeout=config.get_default('connection_timeout'), headers=_headers)
-    except Exception as e:
-        return None, ResponseInfo(None, e)
-    return __return_wrapper(r)
+            connect_timeout=config.get_default('connection_timeout'), headers=_headers)
+    except Exception:
+        import traceback
+        callback( None, ResponseInfo(None, traceback.format_exc()) )
+        return
+    ret,info = __return_wrapper(r)
+    callback( ret,info )
 
 
 class _TokenAuth(AuthBase):
@@ -65,16 +73,15 @@ class _TokenAuth(AuthBase):
         return r
 
 
-def _post_with_token(url, data, token):
-    return _post(url, data, None, _TokenAuth(token))
+def _post_with_token(url, data, token, callback=None):
+    _post(url, data, None, _TokenAuth(token), callback=callback)
+
+def _post_file(url, data, files, callback=None):
+    _post(url, data, files, None,callback=callback)
 
 
-def _post_file(url, data, files):
-    return _post(url, data, files, None)
-
-
-def _post_with_auth(url, data, auth):
-    return _post(url, data, None, RequestsAuth(auth))
+def _post_with_auth(url, data, auth, callback=None):
+    _post(url, data, None, RequestsAuth(auth), callback=callback)
 
 
 class ResponseInfo(object):
@@ -101,12 +108,12 @@ class ResponseInfo(object):
             self.x_log = None
             self.error = str(exception)
         else:
-            self.status_code = response.status_code
-            self.text_body = response.text
+            self.status_code = response.code
+            self.text_body = response.body
             self.req_id = response.headers['X-Reqid']
             self.x_log = response.headers['X-Log']
             if self.status_code >= 400:
-                ret = response.json() if response.text != '' else None
+                ret = simplejson.loads(response.body) if response.body != '' else None
                 if ret is None or ret['error'] is None:
                     self.error = 'unknown'
                 else:

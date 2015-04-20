@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from qiniu import config
-from qiniu.utils import urlsafe_base64_encode, entry
-from qiniu import http
+from tornaqiniu import config
+from tornaqiniu.utils import urlsafe_base64_encode, entry
+from tornaqiniu import http
 
 
 class BucketManager(object):
@@ -18,7 +18,7 @@ class BucketManager(object):
     def __init__(self, auth):
         self.auth = auth
 
-    def list(self, bucket, prefix=None, marker=None, limit=None, delimiter=None):
+    def list(self, bucket, prefix=None, marker=None, limit=None, delimiter=None, callback=None):
         """前缀查询:
 
         1. 首次请求 marker = None
@@ -52,15 +52,16 @@ class BucketManager(object):
             options['delimiter'] = delimiter
 
         url = 'http://{0}/list'.format(config.get_default('default_rsf_host'))
-        ret, info = self.__get(url, options)
 
-        eof = False
-        if ret and not ret.get('marker'):
-            eof = True
+        def list_callback(ret,info):
+            eof = False
+            if ret and not ret.get('marker'):
+                eof = True
+            callback( (ret,eof,info) )
 
-        return ret, eof, info
+        self.__get(url, options,list_callback)
 
-    def stat(self, bucket, key):
+    def stat(self, bucket, key, callback=None):
         """获取文件信息:
 
         获取资源的元信息，但不返回文件内容，具体规格参考：
@@ -81,9 +82,9 @@ class BucketManager(object):
             一个ReponseInfo对象
         """
         resource = entry(bucket, key)
-        return self.__rs_do('stat', resource)
+        self.__rs_do('stat', callback, resource)
 
-    def delete(self, bucket, key):
+    def delete(self, bucket, key, callback=None):
         """删除文件:
 
         删除指定资源，具体规格参考：
@@ -98,9 +99,9 @@ class BucketManager(object):
             一个ReponseInfo对象
         """
         resource = entry(bucket, key)
-        return self.__rs_do('delete', resource)
+        self.__rs_do('delete', callback, resource)
 
-    def rename(self, bucket, key, key_to):
+    def rename(self, bucket, key, key_to, callback=None):
         """重命名文件:
 
         给资源进行重命名，本质为move操作。
@@ -114,9 +115,9 @@ class BucketManager(object):
             一个dict变量，成功返回NULL，失败返回{"error": "<errMsg string>"}
             一个ReponseInfo对象
         """
-        return self.move(bucket, key, bucket, key_to)
+        self.move(bucket, key, bucket, key_to, callback=callback)
 
-    def move(self, bucket, key, bucket_to, key_to):
+    def move(self, bucket, key, bucket_to, key_to, callback=None):
         """移动文件:
 
         将资源从一个空间到另一个空间，具体规格参考：
@@ -134,9 +135,9 @@ class BucketManager(object):
         """
         resource = entry(bucket, key)
         to = entry(bucket_to, key_to)
-        return self.__rs_do('move', resource, to)
+        self.__rs_do('move', callback, resource, to)
 
-    def copy(self, bucket, key, bucket_to, key_to):
+    def copy(self, bucket, key, bucket_to, key_to, callback=None):
         """复制文件:
 
         将指定资源复制为新命名资源，具体规格参考：
@@ -154,9 +155,9 @@ class BucketManager(object):
         """
         resource = entry(bucket, key)
         to = entry(bucket_to, key_to)
-        return self.__rs_do('copy', resource, to)
+        self.__rs_do('copy', callback, resource, to)
 
-    def fetch(self, url, bucket, key):
+    def fetch(self, url, bucket, key, callback=None):
         """抓取文件:
         从指定URL抓取资源，并将该资源存储到指定空间中，具体规格参考：
         http://developer.qiniu.com/docs/v6/api/reference/rs/fetch.html
@@ -172,9 +173,9 @@ class BucketManager(object):
         """
         resource = urlsafe_base64_encode(url)
         to = entry(bucket, key)
-        return self.__io_do('fetch', resource, 'to/{0}'.format(to))
+        self.__io_do('fetch', callback, resource, 'to/{0}'.format(to))
 
-    def prefetch(self, bucket, key):
+    def prefetch(self, bucket, key, callback=None):
         """镜像回源预取文件:
 
         从镜像源站抓取资源到空间中，如果空间中已经存在，则覆盖该资源，具体规格参考
@@ -189,9 +190,9 @@ class BucketManager(object):
             一个ReponseInfo对象
         """
         resource = entry(bucket, key)
-        return self.__io_do('prefetch', resource)
+        self.__io_do('prefetch', callback, resource)
 
-    def change_mime(self, bucket, key, mime):
+    def change_mime(self, bucket, key, mime, callback=None):
         """修改文件mimeType:
 
         主动修改指定资源的文件类型，具体规格参考：
@@ -204,9 +205,9 @@ class BucketManager(object):
         """
         resource = entry(bucket, key)
         encode_mime = urlsafe_base64_encode(mime)
-        return self.__rs_do('chgm', resource, 'mime/{0}'.format(encode_mime))
+        self.__rs_do('chgm', callback, resource, 'mime/{0}'.format(encode_mime))
 
-    def batch(self, operations):
+    def batch(self, operations, callback=None):
         """批量操作:
 
         在单次请求中进行多个资源管理操作，具体规格参考：
@@ -228,9 +229,9 @@ class BucketManager(object):
             一个ReponseInfo对象
         """
         url = 'http://{0}/batch'.format(config.get_default('default_rs_host'))
-        return self.__post(url, dict(op=operations))
+        self.__post(url, dict(op=operations), callback=callback)
 
-    def buckets(self):
+    def buckets(self, callback=None):
         """获取所有空间名:
 
         获取指定账号下所有的空间名。
@@ -240,24 +241,24 @@ class BucketManager(object):
                 [ <Bucket1>, <Bucket2>, ... ]
             一个ReponseInfo对象
         """
-        return self.__rs_do('buckets')
+        self.__rs_do('buckets', callback=callback)
 
-    def __rs_do(self, operation, *args):
-        return self.__server_do(config.get_default('default_rs_host'), operation, *args)
+    def __rs_do(self, operation, callback, *args):
+        self.__server_do(config.get_default('default_rs_host'), operation, callback, *args)
 
-    def __io_do(self, operation, *args):
-        return self.__server_do(config.get_default('default_io_host'), operation, *args)
+    def __io_do(self, operation, callback, *args):
+        self.__server_do(config.get_default('default_io_host'), operation, callback, *args)
 
-    def __server_do(self, host, operation, *args):
+    def __server_do(self, host, operation, callback, *args):
         cmd = _build_op(operation, *args)
         url = 'http://{0}/{1}'.format(host, cmd)
-        return self.__post(url)
+        self.__post(url, callback=callback)
 
-    def __post(self, url, data=None):
-        return http._post_with_auth(url, data, self.auth)
+    def __post(self, url, data=None, callback=None):
+        http._post_with_auth(url, data, self.auth, callback=callback)
 
-    def __get(self, url, params=None):
-        return http._get(url, params, self.auth)
+    def __get(self, url, params=None, callback=None):
+        http._get(url, params, self.auth, callback=callback)
 
 
 def _build_op(*args):

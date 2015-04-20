@@ -14,10 +14,10 @@ except ImportError:
 
 
 packages = [
-    'qiniu',
-    'qiniu.services',
-    'qiniu.services.storage',
-    'qiniu.services.processing',
+    'tornaqiniu',
+    'tornaqiniu.services',
+    'tornaqiniu.services.storage',
+    'tornaqiniu.services.processing',
 ]
 
 
@@ -38,15 +38,15 @@ def find_version(*file_paths):
 
 
 setup(
-    name='qiniu',
-    version=find_version("qiniu/__init__.py"),
-    description='Qiniu Resource Storage SDK',
+    name='tornaqiniu',
+    version=find_version("tornaqiniu/__init__.py"),
+    description='Qiniu Resource Storage SDK With Tornado',
     long_description='see:\nhttps://github.com/qiniu/python-sdk\n',
-    author='Shanghai Qiniu Information Technologies Co., Ltd.',
-    author_email='sdk@qiniu.com',
-    maintainer_email='support@qiniu.com',
+    author='weilaihui',
+    author_email='weilaihui@126.com',
+    maintainer_email='weilaihui@126.com',
     license='MIT',
-    url='https://github.com/qiniu/python-sdk',
+    url='https://github.com/weilaihui/tornado-qiniu',
     platforms='any',
     packages=packages,
     classifiers=[
@@ -63,11 +63,11 @@ setup(
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
         'Topic :: Software Development :: Libraries :: Python Modules'
     ],
-    install_requires=['requests'],
+    install_requires=['requests','tornado'],
 
     entry_points={
         'console_scripts': [
-            'qiniupy = qiniu.main:main',
+            'qiniupy = tornaqiniu.main:main',
         ],
     }
 )

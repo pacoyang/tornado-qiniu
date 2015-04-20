@@ -2,6 +2,7 @@
 
 import hmac
 import time
+import tornado.gen
 from hashlib import sha1
 
 from requests.auth import AuthBase
@@ -122,7 +123,8 @@ class Auth(object):
         token = self.token(url)
         return '{0}&token={1}'.format(url, token)
 
-    def upload_token(self, bucket, key=None, expires=3600, policy=None, strict_policy=True):
+    @tornado.gen.engine
+    def upload_token(self, bucket, key=None, expires=3600, policy=None, strict_policy=True, callback=None):
         """生成上传凭证
 
         Args:
@@ -149,7 +151,8 @@ class Auth(object):
         if policy is not None:
             self.__copy_policy(policy, args, strict_policy)
 
-        return self.__upload_token(args)
+        upload_token = self.__upload_token(args)
+        callback(upload_token)
 
     def __upload_token(self, policy):
         data = json.dumps(policy, separators=(',', ':'))
@@ -184,11 +187,10 @@ class RequestsAuth(AuthBase):
     def __init__(self, auth):
         self.auth = auth
 
-    def __call__(self, r):
+    def __call__(self, url, body, headers):
         token = None
-        if r.body is not None and r.headers['Content-Type'] == 'application/x-www-form-urlencoded':
-            token = self.auth.token_of_request(r.url, r.body, 'application/x-www-form-urlencoded')
+        if body is not None and headers['Content-Type'] == 'application/x-www-form-urlencoded':
+            token = self.auth.token_of_request(url, body, 'application/x-www-form-urlencoded')
         else:
-            token = self.auth.token_of_request(r.url)
-        r.headers['Authorization'] = 'QBox {0}'.format(token)
-        return r
+            token = self.auth.token_of_request(url)
+        headers['Authorization'] = 'QBox {0}'.format(token)

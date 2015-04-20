@@ -1,4 +1,4 @@
-# Qiniu Resource Storage SDK for Python
+# Qiniu Resource Storage SDK for Python,Use Tornado's async
 
 [![@qiniu on weibo](http://img.shields.io/badge/weibo-%40qiniutek-blue.svg)](http://weibo.com/qiniutek)
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
@@ -12,7 +12,7 @@
 通过pip
 
 ```bash
-$ pip install qiniu
+$ pip install tornaqiniu
 ```
 
 ## 运行环境
@@ -26,14 +26,14 @@ $ pip install qiniu
 
 ### 上传
 ```python
-import qiniu
+import tornaqiniu
 
 ...
-    q = qiniu.Auth(access_key, secret_key)
+    q = tornaqiniu.Auth(access_key, secret_key)
     key = 'hello'
     data = 'hello qiniu!'
     token = q.upload_token(bucket_name)
-    ret, info = qiniu.put_data(token, key, data)
+    ret, info = tornaqiniu.put_data(token, key, data)
     if ret is not None:
         print('All is OK')
     else:

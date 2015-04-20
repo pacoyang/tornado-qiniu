@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from qiniu import config
-from qiniu import http
+from tornaqiniu import config
+from tornaqiniu import http
 
 
 class PersistentFop(object):
