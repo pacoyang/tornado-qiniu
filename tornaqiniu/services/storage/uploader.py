@@ -49,11 +49,11 @@ def put_file(up_token, key, file_path, params=None, mime_type='application/octet
     size = os.stat(file_path).st_size
     with open(file_path, 'rb') as input_stream:
         if size > config._BLOCK_SIZE * 2:
-            ret, info = put_stream(up_token, key, input_stream, size, params, mime_type, progress_handler)
+            ret, info = yield tornado.gen.Task(put_stream, up_token, key, input_stream, size, params, mime_type, progress_handler)
         else:
             crc = file_crc32(file_path) if check_crc else None
-            ret, info = _form_put(up_token, key, input_stream, params, mime_type, crc, True, progress_handler)
-    return ret, info
+            ret, info = yield tornado.gen.Task(_form_put, up_token, key, input_stream, params, mime_type, crc, True, progress_handler)
+    callback(( ret, info ))
 
 @tornado.gen.engine
 def _form_put(up_token, key, data, params, mime_type, crc, is_file=False, progress_handler=None, callback=None):
@@ -77,7 +77,7 @@ def _form_put(up_token, key, data, params, mime_type, crc, is_file=False, progre
             data.seek(0)
         r, info = yield tornado.gen.Task(http._post_file,url, data=fields, files={'file': (name, data, mime_type)})
 
-    callback( (r,info) )
+    callback(( r,info ))
 
 @tornado.gen.engine
 def put_stream(up_token, key, input_stream, data_size, params=None, mime_type=None, progress_handler=None, callback=None):
@@ -121,6 +121,7 @@ class _Resume(object):
             length = len(block)
             crc = crc32(block)
             ret, info = yield tornado.gen.Task(self.make_block, block, length, host)
+
             if ret is None and not info.need_retry:
                 callback( (ret,info) )
                 return
@@ -168,5 +169,6 @@ class _Resume(object):
         body = ','.join([status['ctx'] for status in self.blockStatus])
         self.post(url, body, callback=callback)
 
+    @tornado.gen.engine
     def post(self, url, data, callback=None):
         http._post_with_token(url, data, self.up_token, callback=callback)

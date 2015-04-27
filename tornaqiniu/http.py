@@ -31,7 +31,7 @@ def __return_wrapper(resp):
 def _init():
     global _http
     _http = TornadoHTTPClient()
-    _http.set_proxy("http://10.0.1.32",31286)
+    _http.set_proxy(config.PROXY_HOST,config.PROXY_PORT)
 
 
 @tornado.gen.engine
@@ -43,10 +43,11 @@ def _post(url, data, files, auth, callback=None):
             url, params=data, files=files, auth=auth, headers=_headers, connect_timeout=config.get_default('connection_timeout'))
     except Exception:
         import traceback
+        print traceback.format_exc()
         callback( None, ResponseInfo(None, traceback.format_exc()) )
         return
     ret,info = __return_wrapper(r)
-    callback( ret,info )
+    callback((ret,info ))
 
 @tornado.gen.engine
 def _get(url, params, auth,callback=None):
@@ -72,13 +73,11 @@ class _TokenAuth(AuthBase):
         r.headers['Authorization'] = 'UpToken {0}'.format(self.token)
         return r
 
-
 def _post_with_token(url, data, token, callback=None):
     _post(url, data, None, _TokenAuth(token), callback=callback)
 
 def _post_file(url, data, files, callback=None):
     _post(url, data, files, None,callback=callback)
-
 
 def _post_with_auth(url, data, auth, callback=None):
     _post(url, data, None, RequestsAuth(auth), callback=callback)

@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+PROXY_HOST = "10.0.1.32"
+PROXY_PORT = 31286
+
 RS_HOST = 'rs.qbox.me'      # 管理操作Host
 IO_HOST = 'iovip.qbox.me'   # 七牛源站Host
 RSF_HOST = 'rsf.qbox.me'    # 列举操作Host
