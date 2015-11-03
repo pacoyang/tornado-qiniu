@@ -31,7 +31,7 @@ def __return_wrapper(resp):
 def _init():
     global _http
     _http = TornadoHTTPClient()
-    _http.set_proxy(config.PROXY_HOST,config.PROXY_PORT)
+    #_http.set_proxy(config.PROXY_HOST,config.PROXY_PORT)
 
 
 @tornado.gen.engine
