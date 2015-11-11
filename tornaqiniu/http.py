@@ -109,8 +109,8 @@ class ResponseInfo(object):
         else:
             self.status_code = response.code
             self.text_body = response.body
-            self.req_id = response.headers['X-Reqid']
-            self.x_log = response.headers['X-Log']
+            #self.req_id = response.headers['X-Reqid']
+            #self.x_log = response.headers['X-Log']
             if self.status_code >= 400:
                 ret = simplejson.loads(response.body) if response.body != '' else None
                 if ret is None or ret['error'] is None:
